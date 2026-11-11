@@ -13,6 +13,7 @@ from rich.style import Style
 from rich.text import Text
 from textual.reactive import reactive
 from textual.widget import Widget
+from textual.widgets import Static
 
 PALETTE = {
     "O": "#5A4C68",  # outline
@@ -52,7 +53,7 @@ BASELINE = 3
 JUMP = (0, 1, 2, 3, 3, 2, 1, 0)
 EYES = (5, 10)
 
-MOODS = ("idle", "happy", "thinking", "working", "sad")
+MOODS = ("idle", "happy", "thinking", "working", "training", "sad")
 
 _STYLES: dict[tuple[str, str | None], Style] = {}
 
@@ -71,7 +72,7 @@ def frame(tick: int, mood: str = "idle", blinking: bool = False, cheering: bool 
     def put(r: int, c: int, ch: str) -> None:
         g[r][c] = ch
 
-    fast = mood == "working" or cheering
+    fast = mood in ("working", "training") or cheering
 
     # Headband tails flutter.
     put(3, 14, "r")
@@ -89,6 +90,11 @@ def frame(tick: int, mood: str = "idle", blinking: bool = False, cheering: bool 
             put(6, x + 1, "E")
     elif blinking:
         for x in EYES:
+            put(6, x, "E")
+    elif mood == "training":  # focused: flat determined brows over the eyes
+        for x in EYES:
+            put(5, x - 1, "E")
+            put(5, x, "E")
             put(6, x, "E")
     elif mood == "working":
         shift = 1 if (tick // 8) % 2 else -1
@@ -127,6 +133,18 @@ def frame(tick: int, mood: str = "idle", blinking: bool = False, cheering: bool 
         put(8, 7, "E")
         put(8, 8, "E")
 
+    # Punches while training: a fist shoots out left, then right.
+    if mood == "training" and not cheering:
+        phase = (tick // 3) % 4
+        if phase == 1:  # right jab
+            for r, c in ((8, 14), (8, 15), (9, 14), (9, 15)):
+                put(r, c, "W")
+            put(7, 15, "Y")
+        elif phase == 3:  # left jab
+            for r, c in ((8, 0), (8, 1), (9, 0), (9, 1)):
+                put(r, c, "W")
+            put(7, 0, "Y")
+
     # Effects.
     if mood in ("working", "thinking") and (tick // 6) % 3:
         put(4, 1, "B")
@@ -142,7 +160,7 @@ def frame(tick: int, mood: str = "idle", blinking: bool = False, cheering: bool 
     # Position: breathe, bob faster when working, jump when cheering.
     if cheering:
         y = BASELINE - JUMP[tick % len(JUMP)] + 1
-    elif mood == "working":
+    elif mood in ("working", "training"):
         y = BASELINE + (tick // 2) % 2
     else:
         y = BASELINE + (tick // 5) % 2
@@ -215,3 +233,31 @@ class Mascot(Widget):
 
     def render(self) -> Text:
         return draw(self.tick, self.mood, blinking=self._blink > 0, cheering=self._cheer > 0)
+
+
+class SpeechBubble(Static):
+    """Text that types itself out."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__("", **kwargs)
+        self._full = Text()
+        self._shown = 0
+
+    def on_mount(self) -> None:
+        self.set_interval(0.02, self._type)
+
+    def say(self, markup: str, instant: bool = False) -> None:
+        self._full = Text.from_markup(markup)
+        self._shown = len(self._full) if instant else 0
+        self._draw()
+
+    def _type(self) -> None:
+        if self._shown < len(self._full):
+            self._shown = min(len(self._full), self._shown + 2)
+            self._draw()
+
+    def _draw(self) -> None:
+        text = self._full[: self._shown]
+        if self._shown < len(self._full):
+            text.append("▌", style="#7FD1B9")
+        self.update(text)

@@ -150,13 +150,16 @@ def _settings(rec: Verdict | None, budget: float) -> dict:
             seq = candidate
             break
     batch = 1 if budget < 8 else 2 if budget < 16 else 4
+    # 16-bit LoRA is faster and a bit better than 4-bit QLoRA; use it whenever it fits.
+    p = rec.model.params_b
+    bf16_fits = 2.0 * p + 0.3 * p * (seq / 1024) + 1.5 <= budget * COMFORT
     return {
-        "method": "QLoRA (4-bit)" if budget < 20 else "LoRA (16-bit)",
+        "method": "LoRA (16-bit)" if bf16_fits else "QLoRA (4-bit)",
         "max_seq_len": seq,
         "batch_size": batch,
         "grad_accum": max(16 // batch, 1),
         "lora_rank": 16 if budget < 12 else 32,
-        "gradient_checkpointing": "unsloth",
+        "gradient_checkpointing": "on",
         "rl_group_size": 4 if budget < 8 else 8,
     }
 

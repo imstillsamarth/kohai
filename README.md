@@ -27,28 +27,47 @@ topic can beat it on that topic, and it runs on a laptop. The recipe:
 4. **RL (GRPO):** reward the kohai for verifiably correct answers
 5. **Arena:** benchmark it head-to-head against a big model
 
-## What works today (v0.1)
+## What works today
 
+**Pick the right student**
 - **Hardware auto-detection**: OS, CPU, RAM, NVIDIA GPU + VRAM + CUDA, Apple Silicon, AMD/Intel, disk
 - **Hardware-aware advice**: every model rated for *run / fine-tune / RL* on your machine
   (`● fits`, `◐ tight`, `○ cloud`), plus picks:
   - ★ **Recommended**: best student that fits fine-tuning *and* RL comfortably
   - ◆ **Stretch**: biggest good model you can still train
   - ✦ **Fast iteration**: tiny model to debug your dataset first
-- **Suggested training settings** (seq length, batch, LoRA rank, RL group size) for your VRAM
-- **One-key downloads** from Hugging Face with progress (gated models explained)
-- No NVIDIA GPU? kohai plans for a free Colab T4 instead
+- **Suggested training settings** for your VRAM (16-bit LoRA when it fits, 4-bit QLoRA when it doesn't)
+- **One-key downloads** from Hugging Face with progress
+
+**Train it**
+- **Any AI as senpai**: Claude Code, OpenCode, Gemini CLI, Codex CLI, or any OpenAI-compatible
+  server (Ollama, LM Studio, OpenRouter)
+- **Verified data**: the senpai writes tasks with reference answers; kohai runs every answer
+  through the topic's checker and throws away the wrong ones
+- **SFT → RL → exam**: LoRA fine-tuning, then GRPO-style RL against the checker, then a held-out
+  exam that compares the model before and after
+- **Arena**: put any big model through the same exam
+- **Tofu trains with you** in the TUI: live progress, losses, rewards and a final scoreboard
 
 ## Usage
 
 ```bash
-uv run kohai                   # TUI
-uv run kohai scan              # hardware report + recommendations
-uv run kohai scan --json       # machine-readable
-uv run kohai download qwen2.5-1.5b
+uv sync --extra train            # one-time: PyTorch (CUDA) + Transformers + PEFT
+uv run kohai                     # TUI: pick a model, press t to train it
 ```
 
-TUI keys: `↑/↓` select · `d` download · `f` RL-ready only · `r` rescan · `q` quit
+Or step by step from the CLI:
+
+```bash
+uv run kohai scan                                    # what can my machine train?
+uv run kohai teachers --test                         # which senpai work here?
+uv run kohai gen --topic regex --teacher claude -n 300
+uv run kohai train                                   # SFT → RL → exam on the latest run
+uv run kohai arena --vs opencode                     # same exam for a big model
+uv run kohai runs                                    # all runs and their scores
+```
+
+TUI keys: `↑/↓` select · `t` train · `d` download · `f` RL-ready only · `r` rescan · `q` quit
 
 Example on an RTX 3050 6 GB laptop:
 
@@ -57,8 +76,16 @@ NVIDIA CUDA · 5.4 GB training budget
 ★ Recommended: Qwen2.5 1.5B Instruct      (SFT + RL fit comfortably)
 ◆ Stretch:     Qwen3 4B                   (QLoRA fits, RL needs cloud)
 ✦ Fast:        Qwen2.5 0.5B Instruct
-QLoRA (4-bit) · seq 2048 · batch 1×16 accum · LoRA r=16 · RL group 4
 ```
+
+## Topic packs
+
+| id | the kohai learns to | checker |
+|----|---------------------|---------|
+| `regex` | write a regex from a plain-English request + examples | runs it against hidden match / no-match strings |
+
+A topic pack is one small Python class (`src/kohai/topics/`): a prompt asking the senpai for tasks,
+a validator, the student prompt, and a scoring function. PRs for new topics are very welcome.
 
 ## Adding a model
 
@@ -69,12 +96,12 @@ VRAM estimates are computed from `params_b`.
 
 - [x] Hardware scan + model advisor + downloads
 - [x] Tofu, the animated pixel sensei
-- [ ] **Teacher adapters**: Claude Code (`claude -p`), OpenCode (`opencode run`), Gemini CLI,
-      any OpenAI-compatible API (Ollama, OpenRouter, LM Studio)
-- [ ] **Topic packs** with automatic checkers: PowerShell, regex, SQL, Countdown math, ciphers
-- [ ] Dataset generation + verification
-- [ ] Training: Unsloth QLoRA SFT → GRPO, using the advisor's settings
-- [ ] Arena: kohai vs a big model on held-out questions
+- [x] Teacher adapters: Claude Code, OpenCode, Gemini CLI, Codex, OpenAI-compatible APIs
+- [x] Dataset generation + verification
+- [x] Training: LoRA/QLoRA SFT → GRPO, using the advisor's settings
+- [x] Arena: kohai vs a big model on held-out questions
+- [ ] More topic packs: SQL, Countdown math, shell commands (sandboxed), ciphers
+- [ ] Chat with your trained kohai
 - [ ] Export: GGUF → Ollama in one command
 - [ ] Browse and search every small model on Hugging Face, live
 

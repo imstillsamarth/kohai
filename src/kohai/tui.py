@@ -16,7 +16,7 @@ from textual.widgets import Button, DataTable, Footer, ProgressBar, Static
 from . import __version__, render, state
 from .advisor import CLOUD, NO, OK, SLOW, TIGHT, Advice, Verdict, advise
 from .catalog import load_catalog
-from .mascot import Mascot
+from .mascot import Mascot, SpeechBubble
 from .sysinfo import SystemInfo, scan
 
 KOHAI_THEME = Theme(
@@ -35,6 +35,8 @@ KOHAI_THEME = Theme(
 )
 
 HINTS = [
+    "Press [b]t[/b] to train the highlighted model on a topic.",
+    "Press [b]w[/b] to see your runs, and watch live training.",
     "Press [b]d[/b] to download the highlighted model.",
     "Press [b]f[/b] to show only models that can do RL on this machine.",
     "Small model + narrow topic + RL = beats models 10× bigger.",
@@ -42,34 +44,6 @@ HINTS = [
     "Debug your dataset on the ✦ fast model first, then train ★.",
     "Teachers and training are coming next. Stay tuned, student.",
 ]
-
-
-class SpeechBubble(Static):
-    """Text that types itself out."""
-
-    def __init__(self, **kwargs) -> None:
-        super().__init__("", **kwargs)
-        self._full = Text()
-        self._shown = 0
-
-    def on_mount(self) -> None:
-        self.set_interval(0.02, self._type)
-
-    def say(self, markup: str, instant: bool = False) -> None:
-        self._full = Text.from_markup(markup)
-        self._shown = len(self._full) if instant else 0
-        self._draw()
-
-    def _type(self) -> None:
-        if self._shown < len(self._full):
-            self._shown = min(len(self._full), self._shown + 2)
-            self._draw()
-
-    def _draw(self) -> None:
-        text = self._full[: self._shown]
-        if self._shown < len(self._full):
-            text.append("▌", style="#7FD1B9")
-        self.update(text)
 
 
 class KohaiApp(App):
@@ -135,6 +109,8 @@ class KohaiApp(App):
     """
 
     BINDINGS = [
+        Binding("t", "train", "Train"),
+        Binding("w", "runs", "Runs"),
         Binding("d", "download", "Download"),
         Binding("f", "toggle_fit", "RL-ready only"),
         Binding("r", "rescan", "Rescan"),
@@ -187,6 +163,12 @@ class KohaiApp(App):
         table.add_column(" ", key="dl", width=1)
         self.set_interval(14, self._next_tip)
         self.action_rescan()
+
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        # Main-screen actions are hidden and disabled while another screen (training) is open.
+        if action in ("train", "runs", "download", "toggle_fit", "rescan") and len(self.screen_stack) > 1:
+            return False
+        return True
 
     def on_resize(self, event) -> None:
         self.screen.set_class(event.size.width < 125, "narrow")
@@ -348,6 +330,29 @@ class KohaiApp(App):
             btn.label = f"⬇  Download  ·  {v.model.disk_gb} GB"
             btn.variant = "primary"
             btn.disabled = self.downloading is not None
+
+    # ---- train ----------------------------------------------------------
+
+    def action_train(self) -> None:
+        if self.selected is None or self.advice is None or self.downloading:
+            return
+        v = self.selected
+        if not self.advice.settings_for(v):
+            self.say(f"[b]{escape(render.short_name(v.model.name))}[/b] is too big to train here. "
+                     "Pick a smaller one.", "sad")
+            return
+        if self.advice.train_where == "colab":
+            self.notify("No CUDA GPU detected; local training will be very slow.", severity="warning")
+        from .tui_train import TrainScreen
+
+        self.push_screen(TrainScreen(v, self.advice))
+
+    def action_runs(self) -> None:
+        if self.advice is None:
+            return
+        from .tui_train import RunsScreen
+
+        self.push_screen(RunsScreen(self.advice))
 
     # ---- download -------------------------------------------------------
 
